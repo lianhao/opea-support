@@ -12,7 +12,7 @@ function docker_build() {
   dockerfile=$3
   tag="${4:-latest}"
 
-  echo "...... Build image $name:$tag with dockerfile $dockerfile ......"
+  echo "...... Build image $name:$tag with dockerfile $dockerfile under directory $dir ......"
   cd $dir
   sudo docker build -t $OPEA_IMAGE_REPO/opea/${name}:${tag} -f $dockerfile .
   sudo docker push $OPEA_IMAGE_REPO/opea/${name}:${tag}
@@ -96,7 +96,6 @@ add_image_data codegen-react-ui $DIRNAME/GenAIExamples/CodeGen/docker/ui docker/
 
 add_image_data codetrans $DIRNAME/GenAIExamples/CodeTrans/docker Dockerfile
 add_image_data codetrans-ui $DIRNAME/GenAIExamples/CodeTrans/docker/ui docker/Dockerfile
-add_image_data codegen-react-ui $DIRNAME/GenAIExamples/CodeTrans/docker/ui docker/Dockerfile.react
 
 add_image_data docsum $DIRNAME/GenAIExamples/DocSum/docker Dockerfile
 add_image_data docsum-ui $DIRNAME/GenAIExamples/DocSum/docker/ui docker/Dockerfile
