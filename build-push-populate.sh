@@ -21,6 +21,8 @@ function docker_build() {
   sudo nerdctl -n k8s.io tag $OPEA_IMAGE_REPO/opea/${name}:${tag} opea/${name}:${tag}
   sudo nerdctl -n k8s.io rmi $OPEA_IMAGE_REPO/opea/${name}:${tag}
   cd -
+  sudo docker system prune -f
+  sudo nerdctl -n k8s.io system prune -f
 }
 
 # git_get_code <git repo url>
