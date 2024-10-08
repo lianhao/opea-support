@@ -88,7 +88,7 @@ add_image_data retriever-qdrant $DIRNAME/GenAIComps comps/retrievers/qdrant/hays
 add_image_data reranking-tei $DIRNAME/GenAIComps comps/reranks/tei/Dockerfile
 
 add_image_data chatqna $DIRNAME/GenAIExamples/ChatQnA Dockerfile
-add_image_data chatqna-guardrails $DIRNAME/GenAIExamples/ChatQnA Dockerfile_guardrails
+add_image_data chatqna-guardrails $DIRNAME/GenAIExamples/ChatQnA Dockerfile.guardrails
 add_image_data chatqna-ui $DIRNAME/GenAIExamples/ChatQnA/ui docker/Dockerfile
 add_image_data chatqna-conversation-ui $DIRNAME/GenAIExamples/ChatQnA/ui docker/Dockerfile.react
 
