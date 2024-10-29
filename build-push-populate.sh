@@ -67,6 +67,7 @@ add_image_data embedding-tei $DIRNAME/GenAIComps comps/embeddings/tei/langchain/
 add_image_data tts $DIRNAME/GenAIComps comps/tts/speecht5/Dockerfile
 add_image_data speecht5 $DIRNAME/GenAIComps comps/tts/speecht5/dependency/Dockerfile
 add_image_data speecht5-gaudi $DIRNAME/GenAIComps comps/tts/speecht5/dependency/Dockerfile.intel_hpu
+add_image_data gpt-sovits $DIRNAME/GenAIComps comps/tts/gpt-sovits/Dockerfile
 
 add_image_data web-retriever-chroma $DIRNAME/GenAIComps comps/web_retrievers/chroma/langchain/Dockerfile
 
@@ -91,6 +92,8 @@ add_image_data agent-langchain $DIRNAME/GenAIComps comps/agent/langchain/Dockerf
 add_image_data chathistory-mongo-server $DIRNAME/GenAIComps comps/chathistory/mongo/Dockerfile
 add_image_data promptregistry-mongo-server $DIRNAME/GenAIComps comps/prompt_registry/mongo/Dockerfile
 
+add_image_data lvm-tgi $DIRNAME/GenAIComps comps/lvms/tgi-llava/Dockerfile
+
 add_image_data chatqna $DIRNAME/GenAIExamples/ChatQnA Dockerfile
 add_image_data chatqna-guardrails $DIRNAME/GenAIExamples/ChatQnA Dockerfile.guardrails
 add_image_data chatqna-ui $DIRNAME/GenAIExamples/ChatQnA/ui docker/Dockerfile
@@ -106,6 +109,16 @@ add_image_data codetrans-ui $DIRNAME/GenAIExamples/CodeTrans/ui docker/Dockerfil
 add_image_data docsum $DIRNAME/GenAIExamples/DocSum Dockerfile
 add_image_data docsum-ui $DIRNAME/GenAIExamples/DocSum/ui docker/Dockerfile
 add_image_data docsum-react-ui $DIRNAME/GenAIExamples/DocSum/ui docker/Dockerfile.react
+
+add_image_data audioqna $DIRNAME/GenAIExamples/AudioQnA Dockerfile
+add_image_data audioqna-ui $DIRNAME/GenAIExamples/AudioQnA/ui docker/Dockerfile
+
+add_image_data faqgen $DIRNAME/GenAIExamples/FaqGen Dockerfile
+add_image_data faqgen-ui $DIRNAME/GenAIExamples/FaqGen/ui docker/Dockerfile
+add_image_data faqgen-react-ui $DIRNAME/GenAIExamples/FaqGen/ui docker/Dockerfile.react
+
+add_image_data visualqna $DIRNAME/GenAIExamples/VisualQnA Dockerfile
+add_image_data visualqna-ui $DIRNAME/GenAIExamples/VisualQnA/ui docker/Dockerfile
 # END of adding image data
 
 if [ $# -eq 0 ]; then
