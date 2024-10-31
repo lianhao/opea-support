@@ -111,6 +111,7 @@ add_image_data docsum-ui $DIRNAME/GenAIExamples/DocSum/ui docker/Dockerfile
 add_image_data docsum-react-ui $DIRNAME/GenAIExamples/DocSum/ui docker/Dockerfile.react
 
 add_image_data audioqna $DIRNAME/GenAIExamples/AudioQnA Dockerfile
+add_image_data audioqna-multilang $DIRNAME/GenAIExamples/AudioQnA Dockerfile.multilang
 add_image_data audioqna-ui $DIRNAME/GenAIExamples/AudioQnA/ui docker/Dockerfile
 
 add_image_data faqgen $DIRNAME/GenAIExamples/FaqGen Dockerfile
