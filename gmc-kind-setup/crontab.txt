@@ -1,0 +1,4 @@
+# Run 'crontab -e' to add the following crontab job to restart-kind
+
+# m h  dom mon dow   command
+0 18 * * 6 /home/sdp/workspace/restart-kind.sh >> /home/sdp/workspace/cronlogs/cleanjob_$(date +\%Y\%m\%d).log 2>&1
