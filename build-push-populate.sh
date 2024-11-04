@@ -118,8 +118,14 @@ add_image_data faqgen $DIRNAME/GenAIExamples/FaqGen Dockerfile
 add_image_data faqgen-ui $DIRNAME/GenAIExamples/FaqGen/ui docker/Dockerfile
 add_image_data faqgen-react-ui $DIRNAME/GenAIExamples/FaqGen/ui docker/Dockerfile.react
 
+add_image_data searchqna $DIRNAME/GenAIExamples/SearchQnA Dockerfile
+add_image_data searchqna-ui $DIRNAME/GenAIExamples/SearchQnA/ui docker/Dockerfile
+
 add_image_data visualqna $DIRNAME/GenAIExamples/VisualQnA Dockerfile
 add_image_data visualqna-ui $DIRNAME/GenAIExamples/VisualQnA/ui docker/Dockerfile
+
+add_image_data translation $DIRNAME/GenAIExamples/Translation Dockerfile
+add_image_data translation-ui $DIRNAME/GenAIExamples/Translation/ui docker/Dockerfile
 # END of adding image data
 
 if [ $# -eq 0 ]; then
