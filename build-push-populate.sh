@@ -1,26 +1,80 @@
 #!/bin/bash
 
-set -e
-
-export OPEA_IMAGE_REPO=100.83.122.244:5000
+export REGISTRY=${REGISTRY:-100.83.122.244:5000/opea}
 DIRNAME=$(dirname `readlink -f $0`)
 
-# docker_build <name> <source root dir> <dockerfile> <tag>
-function docker_build() {
+# check_env
+function check_env() {
+  if ! command -v docker compose 2>&1 > /dev/null
+  then
+    echo "Error: Please install docker and docker-compose!"
+    exit 1
+  fi
+  if ! command -v nerdctl 2>&1 > /dev/null
+  then
+    echo "Error: Please install nerdctl!"
+    exit 1
+  fi
+  if ! command -v yq 2>&1 > /dev/null
+  then
+    echo "Error: Please install yq!"
+    exit 1
+  fi
+}
+
+# prepare_ctx <docker compose file>
+function prepare_ctx() {
+    pushd $(dirname $1)
+    if [[ $(grep -c "context: vllm" $1) != 0 ]]; then
+        ln -s -f $DIRNAME/vllm vllm
+    fi
+    if [[ $(grep -c "context: vllm-fork" $1) != 0 ]]; then
+        ln -s -f $DIRNAME/vllm-fork vllm-fork
+    fi
+    if [[ $(grep -c "context: GenAIComps" $1) != 0 ]]; then
+        ln -s -f $DIRNAME/GenAIComps GenAIComps
+    fi
+    popd
+}
+
+# docker_build_img <name> <docker_compose file> <svc> <tag>
+function docker_build_img() {
   name=$1
   dir=$2	
-  dockerfile=$3
+  svc=$3
   tag="${4:-latest}"
 
-  echo "...... Build image $name:$tag with dockerfile $dockerfile under directory $dir ......"
-  cd $dir
-  sudo docker build -t $OPEA_IMAGE_REPO/opea/${name}:${tag} -f $dockerfile .
-  sudo docker push $OPEA_IMAGE_REPO/opea/${name}:${tag}
-  #docker rmi $OPEA_IMAGE_REPO/opea/${name}:${tag}
-  sudo nerdctl -n k8s.io pull $OPEA_IMAGE_REPO/opea/${name}:latest
-  sudo nerdctl -n k8s.io tag $OPEA_IMAGE_REPO/opea/${name}:${tag} opea/${name}:${tag}
-  sudo nerdctl -n k8s.io rmi $OPEA_IMAGE_REPO/opea/${name}:${tag}
-  cd -
+  echo "Build image $name:$tag with svc $svc using docker compose file $dir ......"
+  prepare_ctx $dir
+  pushd $(dirname $dir)
+  sudo -E docker compose -f $dir build $svc --no-cache
+  sudo -E docker compose -f $dir push $svc
+  sudo nerdctl -n k8s.io pull ${REGISTRY}/${name}:${tag}
+  sudo nerdctl -n k8s.io tag ${REGISTRY}/${name}:${tag} opea/${name}:${tag}
+  sudo nerdctl -n k8s.io rmi ${REGISTRY}/${name}:${tag}
+  popd
+  sudo docker system prune -f
+  sudo nerdctl -n k8s.io system prune -f
+}
+
+# docker_build_workload <workload> <docker_compose file>
+function docker_build_workload() {
+  workload=$1
+  dir=$2
+  echo "Build $workload images using docker_compose_file $dir "
+  prepare_ctx $dir
+  pushd $(dirname $dir)
+  sudo -E docker compose -f $dir build --parallel --no-cache
+  sudo -E docker compose -f $dir push
+  popd
+  for imgdata in `grep "image: " $dir | awk '{print $2}'`
+  do
+      img=`eval "echo $imgdata"`
+      name=`echo $img | awk -v sep=${REGISTRY} 'BEGIN{FS=sep}; {print $2}' | cut -d ':' -f 1 | cut -d '/' -f2-`
+      sudo nerdctl -n k8s.io pull $img
+      sudo nerdctl -n k8s.io tag $img opea/${name}
+      sudo nerdctl -n k8s.io rmi $img
+  done
   sudo docker system prune -f
   sudo nerdctl -n k8s.io system prune -f
 }
@@ -41,125 +95,116 @@ function git_get_code() {
   fi
 }
 
-
 declare -A image_data
 declare -a image_names
+declare -a workload_names
+declare -A workload_data
 
-# add_image_data <name> <source root dir> <dockerfile relevant to source root dir>
+# add_image_data <image name> <docker compose file> <svc name in docker compose file>
 function add_image_data() {
+  if [[ -n "${image_data[$1_dir]}" ]]; then
+    echo "Warning: Skip duplicated data for image $1: $2 $3"
+    echo "Warning: exisiting image data is: ${image_data[$1_dir]} ${image_data[$1_svc]}"
+  fi
   image_names+=($1)
   image_data[$1_dir]=$2
-  image_data[$1_dockerfile]=$3
+  image_data[$1_svc]=$3
 }
 
-# BEGINNING of adding image data
-add_image_data dataprep-redis $DIRNAME/GenAIComps comps/dataprep/redis/langchain/Dockerfile
-add_image_data dataprep-qdrant $DIRNAME/GenAIComps comps/dataprep/qdrant/langchain/Dockerfile
-add_image_data dataprep-redis-llama-index $DIRNAME/GenAIComps comps/dataprep/redis/llama_index/Dockerfile
-add_image_data dataprep-on-ray-redis $DIRNAME/GenAIComps comps/dataprep/redis/langchain_ray/Dockerfile
+function populate_images_data() {
+    for build_file in `find $DIRNAME/GenAIExamples -path "*/docker_image_build/build.yaml" | sort `
+    do
+       echo ""
+       echo "Parsing build file ${build_file}..."
+       # Add workload data
+       workload_name=`echo $build_file | awk -v sep=$DIRNAME/GenAIExamples/ 'BEGIN{FS=sep}; {print $2}' | cut -d '/' -f1`
+       workload_names+=(${workload_name})
+       workload_data[${workload_name}_dir]=${build_file}
+       # Add image data
+       for svc in `yq '.services|keys[]' ${build_file}`
+       do
+         image=`yq ".services.$svc.image" ${build_file}`
+	 image=`eval "echo $image" | awk -v sep=${REGISTRY} 'BEGIN{FS=sep}; {print $2}' | cut -d ':' -f 1 | cut -d '/' -f2-`
+	 add_image_data $image ${build_file} $svc
+       done
+    done
+}
 
-add_image_data asr $DIRNAME/GenAIComps comps/asr/whisper/Dockerfile
-add_image_data whisper $DIRNAME/GenAIComps comps/asr/whisper/dependency/Dockerfile
-add_image_data whisper-gaudi $DIRNAME/GenAIComps comps/asr/whisper/dependency/Dockerfile.intel_hpu
 
-add_image_data embedding-tei $DIRNAME/GenAIComps comps/embeddings/tei/langchain/Dockerfile
-
-add_image_data tts $DIRNAME/GenAIComps comps/tts/speecht5/Dockerfile
-add_image_data speecht5 $DIRNAME/GenAIComps comps/tts/speecht5/dependency/Dockerfile
-add_image_data speecht5-gaudi $DIRNAME/GenAIComps comps/tts/speecht5/dependency/Dockerfile.intel_hpu
-add_image_data gpt-sovits $DIRNAME/GenAIComps comps/tts/gpt-sovits/Dockerfile
-
-add_image_data web-retriever-chroma $DIRNAME/GenAIComps comps/web_retrievers/chroma/langchain/Dockerfile
-
-add_image_data llm-tgi $DIRNAME/GenAIComps comps/llms/text-generation/tgi/Dockerfile
-add_image_data llm-ollama $DIRNAME/GenAIComps comps/llms/text-generation/ollama/langchain/Dockerfile
-add_image_data llm-docsum-tgi $DIRNAME/GenAIComps comps/llms/summarization/tgi/langchain/Dockerfile
-add_image_data llm-faqgen-tgi $DIRNAME/GenAIComps comps/llms/faq-generation/tgi/langchain/Dockerfile
-add_image_data llm-vllm $DIRNAME/GenAIComps comps/llms/text-generation/vllm/langchain/Dockerfile
-add_image_data llm-vllm-hpu $DIRNAME/GenAIComps comps/llms/text-generation/vllm/langchain/dependency/Dockerfile.intel_hpu
-add_image_data llm-vllm-ray $DIRNAME/GenAIComps comps/llms/text-generation/vllm/ray/Dockerfile
-add_image_data llm-vllm-ray-hpu $DIRNAME/GenAIComps comps/llms/text-generation/vllm/ray/dependency/Dockerfile
-
-add_image_data guardrails-tgi $DIRNAME/GenAIComps comps/guardrails/llama_guard/langchain/Dockerfile
-add_image_data guardrails-pii-detection $DIRNAME/GenAIComps comps/guardrails/pii_detection/Dockerfile
-
-add_image_data retriever-redis $DIRNAME/GenAIComps comps/retrievers/redis/langchain/Dockerfile
-add_image_data retriever-qdrant $DIRNAME/GenAIComps comps/retrievers/qdrant/haystack/Dockerfile
-
-add_image_data reranking-tei $DIRNAME/GenAIComps comps/reranks/tei/Dockerfile
-
-add_image_data agent-langchain $DIRNAME/GenAIComps comps/agent/langchain/Dockerfile
-add_image_data chathistory-mongo-server $DIRNAME/GenAIComps comps/chathistory/mongo/Dockerfile
-add_image_data promptregistry-mongo-server $DIRNAME/GenAIComps comps/prompt_registry/mongo/Dockerfile
-
-add_image_data lvm-tgi $DIRNAME/GenAIComps comps/lvms/tgi-llava/Dockerfile
-
-add_image_data chatqna $DIRNAME/GenAIExamples/ChatQnA Dockerfile
-add_image_data chatqna-guardrails $DIRNAME/GenAIExamples/ChatQnA Dockerfile.guardrails
-add_image_data chatqna-ui $DIRNAME/GenAIExamples/ChatQnA/ui docker/Dockerfile
-add_image_data chatqna-conversation-ui $DIRNAME/GenAIExamples/ChatQnA/ui docker/Dockerfile.react
-
-add_image_data codegen $DIRNAME/GenAIExamples/CodeGen Dockerfile
-add_image_data codegen-ui $DIRNAME/GenAIExamples/CodeGen/ui docker/Dockerfile
-add_image_data codegen-react-ui $DIRNAME/GenAIExamples/CodeGen/ui docker/Dockerfile.react
-
-add_image_data codetrans $DIRNAME/GenAIExamples/CodeTrans Dockerfile
-add_image_data codetrans-ui $DIRNAME/GenAIExamples/CodeTrans/ui docker/Dockerfile
-
-add_image_data docsum $DIRNAME/GenAIExamples/DocSum Dockerfile
-add_image_data docsum-ui $DIRNAME/GenAIExamples/DocSum/ui docker/Dockerfile
-add_image_data docsum-react-ui $DIRNAME/GenAIExamples/DocSum/ui docker/Dockerfile.react
-
-add_image_data audioqna $DIRNAME/GenAIExamples/AudioQnA Dockerfile
-add_image_data audioqna-multilang $DIRNAME/GenAIExamples/AudioQnA Dockerfile.multilang
-add_image_data audioqna-ui $DIRNAME/GenAIExamples/AudioQnA/ui docker/Dockerfile
-
-add_image_data faqgen $DIRNAME/GenAIExamples/FaqGen Dockerfile
-add_image_data faqgen-ui $DIRNAME/GenAIExamples/FaqGen/ui docker/Dockerfile
-add_image_data faqgen-react-ui $DIRNAME/GenAIExamples/FaqGen/ui docker/Dockerfile.react
-
-add_image_data searchqna $DIRNAME/GenAIExamples/SearchQnA Dockerfile
-add_image_data searchqna-ui $DIRNAME/GenAIExamples/SearchQnA/ui docker/Dockerfile
-
-add_image_data visualqna $DIRNAME/GenAIExamples/VisualQnA Dockerfile
-add_image_data visualqna-ui $DIRNAME/GenAIExamples/VisualQnA/ui docker/Dockerfile
-
-add_image_data translation $DIRNAME/GenAIExamples/Translation Dockerfile
-add_image_data translation-ui $DIRNAME/GenAIExamples/Translation/ui docker/Dockerfile
-# END of adding image data
+function usage () {
+  echo "Usage $0 [ image list |  workload list | workload <workload list> | image <image list> | all]"
+  echo "Options:"
+  echo "    image list: list all images data"
+  echo "    workload list: list all image data related to workload"
+  echo "    workload <workload list>: list of workloads image to be built, space separated"
+  echo "    image <image list>: list of image to be built, space separated"
+  echo "    all: build all images"
+  exit 1
+}
 
 if [ $# -eq 0 ]; then
-  echo "Usage $0 [ all | <image list> ]"
-  echo "Options:"
-  echo "    all: build all images"
-  echo "    <image list>: list of image to be built, space separated"
-  exit 1
+  usage
 fi
+
+check_env
 
 # fecth latest code
 git_get_code https://github.com/opea-project/GenAIExamples
 git_get_code https://github.com/opea-project/GenAIComps
+git_get_code https://github.com/vllm-project/vllm
+git_get_code https://github.com/HabanaAI/vllm-fork
+
+populate_images_data
 
 first=$1
-total=$#
+second=$2
 
 if [ "$first" == "all" ]; then
+    for work in ${workload_names[@]}
+    do
+      docker_build_workload $work ${workload_data[${work}_dir]}
+    done
+elif [ "$first" == "image" ] && [ "$second" == "list" ]; then
     for img in ${image_names[@]}
     do
-      docker_build $img ${image_data[${img}_dir]} ${image_data[${img}_dockerfile]}
+      echo "Image data of $img: ${image_data[${img}_dir]} ${image_data[${img}_svc]}"
     done
-else
+elif [ "$first" == "workload" ] && [ "$second" == "list" ]; then
+    for work in ${workload_names[@]}
+    do
+      echo "Workload data of $work: ${workload_data[${work}_dir]}"
+    done
+elif [ "$first" == "workload" ]; then
+    shift
+    total=$#
     i=1
-    while [ $i -le $total ]
+    while [ $i -le ${total} ]
+    do
+      work=$1
+      shift
+      i=$((i + 1))
+      if [[ -n "${workload_data[${work}_dir]}" ]]; then
+        docker_build_workload $work ${workload_data[${work}_dir]}
+      else
+        echo "Error: Unknown workload $work"
+      fi
+    done
+elif [ "$first" == "image" ]; then
+    shift
+    total=$#
+    i=1
+    while [ $i -le ${total} ]
     do
       img=$1
       shift
       i=$((i + 1))
       if [[ -n "${image_data[${img}_dir]}" ]]; then
-        docker_build $img ${image_data[${img}_dir]} ${image_data[${img}_dockerfile]}
+        docker_build_img $img ${image_data[${img}_dir]} ${image_data[${img}_svc]}
       else
         echo "Error: Unknown image $img"
         exit 1
       fi
     done
+else
+  usage
 fi
