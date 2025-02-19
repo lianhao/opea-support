@@ -232,7 +232,7 @@ function _setup_k8s_master() {
 
   # copy kubeconfig
   mkdir -p $HOME/.kube
-  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo cp -f /etc/kubernetes/admin.conf $HOME/.kube/config
   sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
   # install kubectl completion

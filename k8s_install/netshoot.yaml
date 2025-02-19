@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug
+  labels:
+    app: debug
+spec:
+  containers:
+  - name: debug
+    image: nicolaka/netshoot:v0.13
+    command: ["bash", "-c"]
+    args:
+    - |
+      sleep infinity;
+    env:
+    - name: NS
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
