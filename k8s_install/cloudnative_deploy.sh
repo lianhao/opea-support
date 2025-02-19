@@ -118,7 +118,7 @@ function uninstall_docker() {
 function _install_k8s_cri() {
 # Disable swap
 sudo swapoff -a
-sudo sed -i "s/^\(.*swap\)/#\1/g" /etc/fstab
+sudo sed -i "s/^[^#]\(.*swap\)/#\1/g" /etc/fstab
 # load kernel module for containerd
 cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
 overlay
@@ -151,7 +151,7 @@ cat <<EOF | sudo tee /usr/local/lib/systemd/system/containerd.service.d/http-pro
 [Service]
 Environment="HTTP_PROXY=${http_proxy}"
 Environment="HTTPS_PROXY=${https_proxy}"
-Environment="NO_PROXY=${no_proxy}"
+Environment="NO_PROXY=10.96.0.1,10.96.0.0/12,10.0.0.0/8,svc,svc.cluster.local,${no_proxy}"
 EOF
 sudo mkdir -p /etc/containerd
 sudo rm -f /etc/containerd/config.toml
@@ -191,7 +191,7 @@ cat <<EOF | sudo tee /usr/local/lib/systemd/system/buildkit.service.d/http-proxy
 [Service]
 Environment="HTTP_PROXY=${http_proxy}"
 Environment="HTTPS_PROXY=${https_proxy}"
-Environment="NO_PROXY=${no_proxy}"
+Environment="NO_PROXY=10.96.0.1,10.96.0.0/12,10.0.0.0/8,svc,svc.cluster.local,${no_proxy}"
 EOF
 sudo -E wget https://raw.githubusercontent.com/moby/buildkit/v${BUILDKIT_VER}/examples/systemd/system/buildkit.service -qO /usr/local/lib/systemd/system/buildkit.service
 sudo -E wget https://raw.githubusercontent.com/moby/buildkit/v${BUILDKIT_VER}/examples/systemd/system/buildkit.socket -qO /usr/local/lib/systemd/system/buildkit.socket
@@ -279,38 +279,6 @@ function k8s_reset() {
 function k8s_master_untaint() {
   kubectl taint nodes --all node-role.kubernetes.io/control-plane-
   kubectl label nodes --all node.kubernetes.io/exclude-from-external-load-balancers-
-}
-
-function k8s_install_intel_gpu() {
-  # See https://github.com/intel/intel-device-plugins-for-kubernetes/blob/main/INSTALL.md for details
-  helm repo add jetstack https://charts.jetstack.io # for cert-manager
-  helm repo add nfd https://kubernetes-sigs.github.io/node-feature-discovery/charts # for NFD
-  helm repo add intel https://intel.github.io/helm-charts/ # for device-plugin-operator and plugins
-  helm repo update
-
-  # Install cert-manager
-  helm install --wait \
-    cert-manager jetstack/cert-manager \
-    --namespace cert-manager --create-namespace \
-    --version v1.15.2 \
-    --set installCRDs=true
-
-  # Install NFD
-  helm install --wait \
-    nfd nfd/node-feature-discovery \
-    --namespace node-feature-discovery --create-namespace \
-    --version 0.17.1
-
-  # Install device plugin operator
-  helm install --wait \
-     dp-operator intel/intel-device-plugins-operator \
-     --namespace inteldeviceplugins-system --create-namespace
-
-  # Install gpu device plugin
-  helm install --wait \
-    gpu intel/intel-device-plugins-gpu \
-     --namespace inteldeviceplugins-system --create-namespace \
-     --set nodeFeatureRule=true
 }
 
 OS=$(_get_os_distro)
