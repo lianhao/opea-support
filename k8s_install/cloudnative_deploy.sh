@@ -28,7 +28,11 @@ if [ -f /etc/os-release ]; then
   source /etc/os-release
   if [[ "$ID" == "ubuntu" ]]; then
     echo "ubuntu"
+  if [[ "$ID" == "debian" ]]; then
+    echo "ubuntu"
   elif [[ "$ID" == "rhel" ]]; then
+    echo "rhel"
+  elif [[ "$ID" == "fedora" ]]; then
     echo "rhel"
   else
     echo "other"
