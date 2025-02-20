@@ -16,6 +16,12 @@ CALICO_VER="3.29.2"
 
 # K8S config
 POD_CIDR="10.244.0.0/16"
+# the NIC_CIDR is help to determine which NIC to be used by K8s CNI
+# default is to use the NIC where default route is bind
+NIC_CIDR=${NIC_CIDR}
+# k8s api server bind address
+# default is to use the NIC where default route is bind
+APISERVER_ADDR=${APISERVER_ADDR}
 
 function _get_os_distro() {
 if [ -f /etc/os-release ]; then
@@ -63,25 +69,27 @@ function _clean_os_docker_rhel() {
 }
 
 function _install_docker_ubuntu() {
-  # Add Docker's official GPG key:
+  echo "#Add Docker's official GPG key ......"
   sudo apt-get update
   sudo apt-get -y install ca-certificates curl
   sudo install -m 0755 -d /etc/apt/keyrings
   sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-  # Add the repository to Apt sources:
+  echo "#Add the repository to Apt sources ......"
   echo \
     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
     $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo apt-get update
   
+  echo "#Install docker engine ......"
   sudo apt-get -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   sudo systemctl restart docker
 }
 
 function _install_docker_rhel() {
+  echo "#Install docker engine ......"
   sudo dnf -y install dnf-plugins-core
   sudo dnf -y config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
   sudo systemctl enable --now docker
@@ -116,17 +124,17 @@ function uninstall_docker() {
 }
 
 function _install_k8s_cri() {
-# Disable swap
+echo "# Disable swap ......"
 sudo swapoff -a
 sudo sed -i "s/^[^#]\(.*swap\)/#\1/g" /etc/fstab
-# load kernel module for containerd
+echo "# load kernel module for containerd ......"
 cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
 overlay
 br_netfilter
 EOF
 sudo modprobe overlay
 sudo modprobe br_netfilter
-# Enable IPv4 packet forwarding
+echo "# Enable IPv4 packet forwarding ......"
 cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
 net.ipv4.ip_forward = 1
 net.bridge.bridge-nf-call-iptables = 1
@@ -134,16 +142,16 @@ net.bridge.bridge-nf-call-ip6tables = 1
 EOF
 sudo sysctl --system
 
-# Install Runc
+echo "# Install Runc ......"
 wget https://github.com/opencontainers/runc/releases/download/v${RUNC_VER}/runc.${ARCH}
 sudo install -m 755 runc.${ARCH} /usr/local/sbin/runc
 rm -f runc.${ARCH}
 
-#Install CNI
+echo "#Install CNI ......"
 sudo mkdir -p /opt/cni/bin
 wget -c https://github.com/containernetworking/plugins/releases/download/v${CNI_VER}/cni-plugins-linux-${ARCH}-v${CNI_VER}.tgz -qO - | sudo tar xvz -C /opt/cni/bin
 
-#Install Containerd
+echo "#Install Containerd ......"
 wget -c https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VER}/containerd-${CONTAINERD_VER}-linux-${ARCH}.tar.gz -qO - | sudo tar xvz -C /usr/local
 sudo mkdir -p /usr/local/lib/systemd/system/containerd.service.d
 sudo -E wget https://raw.githubusercontent.com/containerd/containerd/main/containerd.service -qO /usr/local/lib/systemd/system/containerd.service
@@ -171,11 +179,11 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now containerd
 sudo systemctl restart containerd
 
-#Install nerdctl
+echo "#Install nerdctl ......"
 wget -c https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VER}/nerdctl-${NERDCTL_VER}-linux-${ARCH}.tar.gz -qO - | sudo tar xvz -C /usr/local/bin
 
 #You may skip buildkit installation if you don't need to build container images.
-#Install buildkit
+echo "#Install buildkit ......"
 wget -c https://github.com/moby/buildkit/releases/download/v${BUILDKIT_VER}/buildkit-v${BUILDKIT_VER}.linux-${ARCH}.tar.gz -qO - | sudo tar xvz -C /usr/local
 sudo mkdir -p /etc/buildkit
 cat <<EOF | sudo tee /etc/buildkit/buildkitd.toml
@@ -201,9 +209,10 @@ sudo systemctl restart buildkit
 }
 
 function _install_k8s_comp () {
-  # Install crictl
+  echo "# Install crictl ......"
   wget -c "https://github.com/kubernetes-sigs/cri-tools/releases/download/v${CRICTL_VER}/crictl-v${CRICTL_VER}-linux-${ARCH}.tar.gz" -qO - | sudo tar xvz -C /usr/local/bin
-  # Install kubeadm, kubelet
+
+  echo "# Install kubeadm, kubelet ......"
   pushd /usr/local/bin
   sudo -E curl -L --remote-name-all https://dl.k8s.io/release/v${K8S_VER}/bin/linux/${ARCH}/{kubeadm,kubelet}
   sudo chmod +x {kubeadm,kubelet}
@@ -213,44 +222,89 @@ function _install_k8s_comp () {
   sudo mkdir -p /usr/local/lib/systemd/system/kubelet.service.d
   curl -sSL "https://raw.githubusercontent.com/kubernetes/release/${RELEASE_VERSION}/cmd/krel/templates/latest/kubeadm/10-kubeadm.conf" | sed "s:/usr/bin:/usr/local/bin:g" | sudo tee /usr/local/lib/systemd/system/kubelet.service.d/10-kubeadm.conf
   sudo systemctl enable --now kubelet
-  # Install kubectl
+
+  echo "#Install kubectl ......"
   curl -LO https://dl.k8s.io/release/v${K8S_VER}/bin/linux/${ARCH}/kubectl
   sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
   rm -f kubectl
-  # Install helm
+
+  echo "#Install helm ......"
   wget -c "https://get.helm.sh/helm-v${HELM_VER}-linux-${ARCH}.tar.gz" -qO - | tar xvz -C /tmp
   sudo mv /tmp/linux-${ARCH}/helm /usr/local/bin/helm
 }
 
+function _find_k8s_pod_network () {
+  if [ "x${NIC_CIDR}" == "x" ]; then
+    interface=$(ip route | awk '/default/ { print $5 }')
+    NIC_CIDR=$(ip addr show "$interface" | awk '/inet / { print $2 }')
+    if [ "x${APISERVER_ADDR}" == "x" ]; then
+      APISERVER_ADDR=$(echo ${NIC_CIDR} | cut -d'/' -f1)
+    fi
+  fi
+  if [ "x${APISERVER_ADDR}" == "x" ]; then
+    interface=$(ip route | awk '/default/ { print $5 }')
+    APISERVER_ADDR=$(ip addr show "$interface" | awk '/inet / { print $2 }' | cut -d'/' -f1)
+  fi
+}
+
 function _install_cni_calico() {
+  echo "#Install Calico CNI ......"
   kubectl create -f "https://raw.githubusercontent.com/projectcalico/calico/v${CALICO_VER}/manifests/tigera-operator.yaml"
-  curl -sSL "https://raw.githubusercontent.com/projectcalico/calico/v${CALICO_VER}/manifests/custom-resources.yaml" | sed "s:192.168.0.0/16:${POD_CIDR}:g" | kubectl create -f - 
+cat <<EOF | kubectl create -f -
+# This section includes base Calico installation configuration.
+# For more information, see: https://docs.tigera.io/calico/latest/reference/installation/api#operator.tigera.io/v1.Installation
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  # Configures Calico networking.
+  calicoNetwork:
+    ipPools:
+    - name: default-ipv4-ippool
+      blockSize: 26
+      cidr: ${POD_CIDR}
+      encapsulation: VXLANCrossSubnet
+      natOutgoing: Enabled
+      nodeSelector: all()
+    nodeAddressAutodetectionV4:
+      cidrs: ["${NIC_CIDR}"]
+---
+# This section configures the Calico API server.
+# For more information, see: https://docs.tigera.io/calico/latest/reference/installation/api#operator.tigera.io/v1.APIServer
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}
+EOF
 }
 
 function _setup_k8s_master() {
-  sudo -E kubeadm init --pod-network-cidr "${POD_CIDR}"
+  echo "# Initialize k8s master node ......"
+  _find_k8s_pod_network
+  sudo -E kubeadm init --pod-network-cidr "${POD_CIDR}" --apiserver-advertise-address ${APISERVER_ADDR} --token abcdef.0123456789abcdef --token-ttl 0
 
-  # copy kubeconfig
+  echo "# copy kubeconfig to user home directory ......"
   mkdir -p $HOME/.kube
   sudo cp -f /etc/kubernetes/admin.conf $HOME/.kube/config
   sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-  # install kubectl completion
+  echo "# install kubectl completion ......"
   _install_pkg bash-completion
   kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null
   sudo chmod a+r /etc/bash_completion.d/kubectl
 
-  # install CNI
+  echo "# instal CNI plugin ......"
   _install_cni_calico
   echo "Sleep 10s for waiting for CNI ready"
   sleep 10
   kubectl get node -owide
   
   # save kubeadm join command
-  kubeadm token create --print-join-command | tee kubeadm_join.sh
-  echo ""
-  echo "Copy kubeadm_join.sh to your K8s worker nodes and run $0 -a install_k8s_worker on your worker nodes if necessary"
-  echo "If you only has one K8s node, please run $0 -a k8s_master_untaint on your master node"
+  echo "K8s master node is ready"
+  echo "To join more K8s worker node, please run 'APISERVER_ADDR=${APISERVER_ADDR} $0 -a install_k8s_worker' on your worker nodes if necessary."
+  echo "If you only has one K8s node, please run $0 -a k8s_master_untaint on your master node."
 }
 
 function install_k8s_master() {
@@ -260,14 +314,14 @@ function install_k8s_master() {
 }
 
 function install_k8s_worker() {
-  if [ -f kubeadm_join.sh ]; then
+  if [ "x${APISERVER_ADDR}" == "x" ]; then
+     echo "Error: Missing APISERVER_ADDR env viriable. Please specify it."
+     exit 1
+  else
     _install_k8s_cri
     _install_k8s_comp
-    sudo sh ./kubeadm_join.sh
-  else
-     echo "Missing file kubeadm_join.sh"
-     echo "Please copy the kubeadm_join.sh file from your K8s master node and put in the current direcotry"
-     exit 1
+    echo "# Join k8s worker node to master node ......"
+    sudo -E kubeadm join ${APISERVER_ADDR}:6443 --token abcdef.0123456789abcdef --discovery-token-unsafe-skip-ca-verification
   fi
 }
 
