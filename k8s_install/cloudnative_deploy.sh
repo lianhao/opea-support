@@ -26,25 +26,19 @@ APISERVER_ADDR=${APISERVER_ADDR}
 function _get_os_distro() {
 if [ -f /etc/os-release ]; then
   source /etc/os-release
-  if [[ "$ID" == "ubuntu" ]]; then
-    echo "ubuntu"
-  elif [[ "$ID" == "debian" ]]; then
-    echo "ubuntu"
-  elif [[ "$ID" == "rhel" ]]; then
-    echo "rhel"
-  elif [[ "$ID" == "fedora" ]]; then
-    echo "rhel"
+  if [[ "x$ID" != "x" ]]; then
+    echo $ID
   else
-    echo "other"
+    echo "unknown"
   fi
 elif [ -f /etc/redhat-release ]; then
   echo "rhel"
 elif [ -f /etc/lsb-release ]; then
   source /etc/lsb-release
-  if [[ "$DISTRIB_ID" == "Ubuntu" ]]; then
-    echo "ubuntu"
+  if [[ "x$DISTRIB_ID" != "x" ]]; then
+    echo $DISTRO_ID | tr '[:upper:]' '[:lower:]'
   else
-      echo "other"
+      echo "unknown"
   fi
 else
   echo "unknown"
@@ -341,15 +335,19 @@ function k8s_master_untaint() {
 
 OS=$(_get_os_distro)
 case $OS in
+  ubuntu)
+    echo "Ubuntu Linux is verified"
+    ;;
   unknown)
     echo "Unknown Linux"
     exit 1
     ;;
-  other)
-    echo "Unsupported linux distribution"
+  *)
+    echo "Unsupported OS $OS"
     exit 1
     ;;
 esac
+
 
 function usage() {
     echo "Usage: $0 [ -a | --action ] <action> [ options ]"
