@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-source ${SCRIPT_DIR}/utils.sh
+
+function wait_for_all_pod_ready() {
+  ns=$1
+  timeout=${2:-30s}
+  echo "Wait for all pods in namespace $ns to be ready ..."
+  for pod in `kubectl -n $ns get pod -oname`;
+  do
+    kubectl -n $ns wait --for=condition=Ready --timeout $timeout $pod
+  done
+}
 
 function k8s_install_intel_gpu_helm() {
   # See https://github.com/intel/intel-device-plugins-for-kubernetes/blob/main/INSTALL.md for details
